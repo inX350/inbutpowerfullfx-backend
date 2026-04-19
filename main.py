@@ -1,7 +1,6 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
-import requests
 import numpy as np
 import time
 
@@ -16,7 +15,7 @@ app.add_middleware(
 )
 
 # ──────────────────────────────────────────
-# FETCH DATA
+# MOCK DATA (SIMULASI MARKET)
 # ──────────────────────────────────────────
 def fetch_candles(symbol: str, timeframe: str, limit: int = 100):
     base = 3300
@@ -32,7 +31,7 @@ def fetch_candles(symbol: str, timeframe: str, limit: int = 100):
         low_p  = min(open_p, close_p) - abs(np.random.randn() * 2)
 
         candles.append({
-            "time": t + i * 900,
+            "time": int(t + i * 900),  # FIX penting
             "open": round(open_p, 2),
             "high": round(high_p, 2),
             "low":  round(low_p, 2),
@@ -50,7 +49,6 @@ def fetch_candles(symbol: str, timeframe: str, limit: int = 100):
 @app.get("/analyze")
 def analyze(symbol: str = "XAUUSD", timeframe: str = "15M"):
     candles = fetch_candles(symbol, timeframe)
-
     last_price = candles[-1]["close"]
 
     return {
@@ -58,6 +56,7 @@ def analyze(symbol: str = "XAUUSD", timeframe: str = "15M"):
         "timeframe": timeframe,
         "last_price": last_price,
         "signal": "⏳ WAIT & SEE",
+        "signal_color": "orange",
         "entry": last_price,
         "sl": last_price + 5,
         "tp1": last_price - 5,
@@ -66,49 +65,79 @@ def analyze(symbol: str = "XAUUSD", timeframe: str = "15M"):
     }
 
 # ──────────────────────────────────────────
-# UI DASHBOARD
+# DASHBOARD UI (FINAL FIXED)
 # ──────────────────────────────────────────
 @app.get("/", response_class=HTMLResponse)
-def home():
+def dashboard():
     return """
-    <html>
-    <head>
-        <title>INBUTPOWERFULLFX AI</title>
-    </head>
-    <body style="background:black;color:white;text-align:center;font-family:sans-serif;">
-        
-        <h1>🚀 INBUTPOWERFULLFX AI</h1>
-        <p>AI Trading System Active</p>
+<!DOCTYPE html>
+<html>
+<head>
+    <title>INBUTPOWERFULLFX AI</title>
+    <script src="https://cdn.jsdelivr.net/npm/lightweight-charts@4.1.1/dist/lightweight-charts.standalone.production.js"></script>
+</head>
 
-        <button onclick="loadSignal()" style="padding:10px 20px;font-size:16px;">
-            🔥 Run AI Signal
+<body style="margin:0;background:#0f172a;color:white;font-family:sans-serif;">
+
+    <h1 style="text-align:center;">🚀 INBUTPOWERFULLFX AI DASHBOARD</h1>
+
+    <div id="chart" style="height:400px;"></div>
+
+    <div style="text-align:center;margin-top:20px;">
+        <button onclick="loadData()" style="padding:10px 20px;font-size:16px;">
+            🔥 Load AI Signal
         </button>
+    </div>
 
-        <h2 id="result"></h2>
+    <div id="signal" style="text-align:center;margin-top:20px;font-size:18px;"></div>
 
-        <script>
-        async function loadSignal(){
-            const res = await fetch('/analyze');
-            const data = await res.json();
+<script>
+const chart = LightweightCharts.createChart(document.getElementById('chart'), {
+    layout: { background: { color: '#0f172a' }, textColor: '#DDD' },
+    grid: { vertLines: { color: '#222' }, horzLines: { color: '#222' } },
+    width: window.innerWidth,
+    height: 400
+});
 
-            document.getElementById("result").innerHTML = `
-                📊 SYMBOL: ${data.symbol} <br>
-                💰 PRICE: ${data.last_price} <br>
-                ⚡ SIGNAL: ${data.signal} <br>
-                🎯 ENTRY: ${data.entry} <br>
-                🛑 SL: ${data.sl} <br>
-                🥇 TP1: ${data.tp1} <br>
-                🥈 TP2: ${data.tp2}
-            `;
-        }
-        </script>
+const candleSeries = chart.addCandlestickSeries();
 
-        <br><br>
-        <a href="/docs" style="color:cyan;">Open API Docs</a>
+// RESPONSIVE FIX
+window.addEventListener('resize', () => {
+    chart.resize(window.innerWidth, 400);
+});
 
-    </body>
-    </html>
-    """
+async function loadData() {
+    const res = await fetch('/analyze');
+    const data = await res.json();
+
+    const candles = data.candles.map(c => ({
+        time: Number(c.time), // FIX WAJIB
+        open: c.open,
+        high: c.high,
+        low: c.low,
+        close: c.close
+    }));
+
+    candleSeries.setData(candles);
+    chart.timeScale().fitContent(); // FIX TAMBAHAN
+
+    document.getElementById("signal").innerHTML = `
+        📊 SYMBOL: ${data.symbol} <br>
+        💰 PRICE: ${data.last_price} <br><br>
+
+        ⚡ SIGNAL: <b style="color:${data.signal_color}">${data.signal}</b><br><br>
+
+        🎯 ENTRY: ${data.entry}<br>
+        🛑 SL: ${data.sl}<br>
+        🥇 TP1: ${data.tp1}<br>
+        🥈 TP2: ${data.tp2}
+    `;
+}
+</script>
+
+</body>
+</html>
+"""
 
 # ──────────────────────────────────────────
 # STATUS
